@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# per-agent identity + mailbox state - never commit a real private key
+.technocore-a2a/
+identity.pem
+state.json
+agent-card.json
