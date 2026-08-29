@@ -174,6 +174,22 @@ def save_state(home: Path, state: dict) -> None:
     tmp.replace(home / "state.json")
 
 
+UNTRUSTED_BANNER_PREFIX = "!! UNTRUSTED CONTENT"
+
+
+def _strip_untrusted_banner(body: str) -> str:
+    """A plain (non-`?format=json`) `/kv/<ns>/<key>` read always prepends a one-line
+    warning plus a blank line before the actual note value - unlike `/r/<room>`, where
+    `?format=json` gives clean JSON with no banner, `?format=json` on `/kv` makes no
+    difference (confirmed against the live service; undocumented in /llms.txt). Since
+    note values are single-line by the service's own invariant, splitting on the first
+    blank line is safe and exact."""
+    if body.startswith(UNTRUSTED_BANNER_PREFIX):
+        _, _, rest = body.partition("\n\n")
+        return rest.rstrip("\n")
+    return body.rstrip("\n")
+
+
 class Agent:
     """One identity + mailbox, loaded from --home. Both `serve` and `send` are just
     different things done with one of these - an A2A peer is symmetric until it decides
@@ -311,9 +327,10 @@ class Agent:
         # _get() already turns any non-404 HTTPError into A2AError, so the only HTTPError
         # that can reach here is a 404 - "no such note yet", not a failure to report.
         try:
-            return self._get(f"/kv/{ns}/{key}", deadline=deadline).decode("utf-8")
+            body = self._get(f"/kv/{ns}/{key}", deadline=deadline).decode("utf-8")
         except urllib.error.HTTPError:
             return None
+        return _strip_untrusted_banner(body)
 
     def kv_set(
         self,
