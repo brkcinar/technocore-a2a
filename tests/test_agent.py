@@ -1,11 +1,14 @@
 import argparse
 import copy
+import io
 import json
 import tempfile
 import time
 import unittest
+import urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest import mock
 from unittest.mock import patch
 
 import agent as bridge
@@ -532,6 +535,34 @@ class CancellationTests(unittest.TestCase):
 
 
 class CallerTests(unittest.TestCase):
+    def test_kv_set_returns_false_on_http_409(self):
+        agent = object.__new__(bridge.Agent)
+        agent.base = "https://example.test"
+        conflict = urllib.error.HTTPError(
+            "https://example.test/kv/ns/key",
+            409,
+            "Conflict",
+            {},
+            io.BytesIO(b"compare-and-set failed"),
+        )
+        with mock.patch("urllib.request.urlopen", side_effect=conflict):
+            self.assertFalse(agent.kv_set("ns", "key", "value"))
+
+    def test_room_read_requests_maximum_limit_and_rejects_gap(self):
+        agent = object.__new__(bridge.Agent)
+        captured = {}
+
+        def fake_get(path, params=None, **kwargs):
+            captured.update(params or {})
+            return json.dumps(
+                {"messages": [{"seq": 3, "text": "late"}], "last_seq": 3}
+            ).encode()
+
+        agent._get = fake_get
+        with self.assertRaisesRegex(bridge.A2AError, "unread sequence gap"):
+            agent.read_room("mb-p-test", 1)
+        self.assertEqual(captured["limit"], 200)
+
     def test_concurrent_first_run_uses_one_persisted_identity(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)

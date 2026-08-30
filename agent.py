@@ -439,6 +439,7 @@ class Agent:
         timeout: float = 15,
         retries: int = 5,
         deadline: float | None = None,
+        passthrough_statuses: tuple[int, ...] = (),
     ) -> bytes:
         # With a `deadline` (an absolute time.time()), retries continue until it arrives,
         # not just for `retries` attempts - a fast-failing burst of 503s would otherwise
@@ -460,7 +461,7 @@ class Agent:
                 with urllib.request.urlopen(request, timeout=request_timeout) as response:
                     return response.read()
             except urllib.error.HTTPError as exc:
-                if exc.code == 404:
+                if exc.code == 404 or exc.code in passthrough_statuses:
                     raise
                 if exc.code < 500:
                     raise A2AError(f"GET {path} -> {exc.code} {exc.read().decode('utf-8', 'replace')}") from exc
@@ -482,13 +483,34 @@ class Agent:
 
     def read_room(self, room: str, since: int, wait: int = 0, deadline: float | None = None) -> dict:
         body = self._get(
-            f"/r/{room}", {"since": since, "wait": wait, "format": "json"}, timeout=wait + 5, deadline=deadline
+            f"/r/{room}",
+            {"since": since, "wait": wait, "limit": 200, "format": "json"},
+            timeout=wait + 5,
+            deadline=deadline,
         )
-        return json.loads(body.decode("utf-8"))
+        view = json.loads(body.decode("utf-8"))
+        messages = view.get("messages", [])
+        if messages and messages[0].get("seq", since + 1) > since + 1:
+            raise A2AError(
+                f"room {room} has an unread sequence gap after {since}; "
+                "refusing to advance the durable cursor"
+            )
+        if not messages and view.get("last_seq", since) > since:
+            raise A2AError(
+                f"room {room} omitted unread messages after {since}; "
+                "refusing to advance the durable cursor"
+            )
+        return view
 
     def read_room_tail(self, room: str, deadline: float | None = None) -> dict:
         """A cursor-free read - interop.md's way to detect a reaped/recreated room."""
-        return json.loads(self._get(f"/r/{room}", {"format": "json"}, deadline=deadline).decode("utf-8"))
+        return json.loads(
+            self._get(
+                f"/r/{room}",
+                {"limit": 200, "format": "json"},
+                deadline=deadline,
+            ).decode("utf-8")
+        )
 
     def say_signed(self, room: str, text: str, deadline: float | None = None) -> int:
         if len(text) > MESSAGE_MAX_CHARS:
@@ -579,7 +601,12 @@ class Agent:
             params["if_absent"] = "1"
         path = f"/kv/{ns}/{key}/set/{urllib.parse.quote(value, safe='')}"
         try:
-            self._get(path, params, deadline=deadline)
+            self._get(
+                path,
+                params,
+                deadline=deadline,
+                passthrough_statuses=(409,),
+            )
             return True
         except urllib.error.HTTPError as exc:
             if exc.code == 409:
