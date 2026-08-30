@@ -15,10 +15,12 @@ BOB_PID=$!
 sleep 3
 
 BOB_MAILBOX=$(python3 -c "import json; print(json.load(open('$BOB_HOME/state.json'))['mailbox'])")
+BOB_DID=$(python3 agent.py --home "$BOB_HOME" identity | awk '/^did: / {print $2}')
 echo "bob is listening on $BOB_MAILBOX (log: /tmp/technocore-a2a-demo-bob.log)"
 
 python3 agent.py --home "$ALICE_HOME" send \
   --to-mailbox "$BOB_MAILBOX" \
+  --peer-did "$BOB_DID" \
   --text "hello from the demo script" \
   --skill shout \
   --timeout 90
