@@ -548,20 +548,40 @@ class CallerTests(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", side_effect=conflict):
             self.assertFalse(agent.kv_set("ns", "key", "value"))
 
-    def test_room_read_requests_maximum_limit_and_rejects_gap(self):
+    def test_room_read_requests_maximum_limit_and_backfills_gap(self):
         agent = object.__new__(bridge.Agent)
-        captured = {}
+        captured = []
 
         def fake_get(path, params=None, **kwargs):
-            captured.update(params or {})
+            captured.append((path, params or {}))
+            if path.endswith("/export"):
+                return (
+                    json.dumps({"seq": 1, "text": "old"}).encode()
+                    + b"\n"
+                    + json.dumps({"seq": 2, "text": "next"}).encode()
+                    + b"\n"
+                    + json.dumps({"seq": 3, "text": "late"}).encode()
+                    + b"\n"
+                )
             return json.dumps(
                 {"messages": [{"seq": 3, "text": "late"}], "last_seq": 3}
             ).encode()
 
         agent._get = fake_get
-        with self.assertRaisesRegex(bridge.A2AError, "unread sequence gap"):
-            agent.read_room("mb-p-test", 1)
-        self.assertEqual(captured["limit"], 200)
+        view = agent.read_room("mb-p-test", 1)
+
+        self.assertEqual(captured[0][1]["limit"], 200)
+        self.assertEqual(captured[1][0], "/r/mb-p-test/export")
+        self.assertEqual([message["seq"] for message in view["messages"]], [2, 3])
+
+    def test_room_export_rejects_unrecoverable_retention_gap(self):
+        agent = object.__new__(bridge.Agent)
+        agent._get = lambda *args, **kwargs: (
+            json.dumps({"seq": 4, "text": "too late"}) + "\n"
+        ).encode()
+
+        with self.assertRaisesRegex(bridge.A2AError, "no longer retains sequence 2"):
+            agent.read_room_export("mb-p-test", 1)
 
     def test_concurrent_first_run_uses_one_persisted_identity(self):
         with tempfile.TemporaryDirectory() as temp_dir:

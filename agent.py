@@ -490,17 +490,41 @@ class Agent:
         )
         view = json.loads(body.decode("utf-8"))
         messages = view.get("messages", [])
-        if messages and messages[0].get("seq", since + 1) > since + 1:
-            raise A2AError(
-                f"room {room} has an unread sequence gap after {since}; "
-                "refusing to advance the durable cursor"
-            )
-        if not messages and view.get("last_seq", since) > since:
-            raise A2AError(
-                f"room {room} omitted unread messages after {since}; "
-                "refusing to advance the durable cursor"
-            )
+        gap = messages and messages[0].get("seq", since + 1) > since + 1
+        omitted = not messages and view.get("last_seq", since) > since
+        if gap or omitted:
+            return self.read_room_export(room, since, deadline=deadline)
         return view
+
+    def read_room_export(
+        self,
+        room: str,
+        since: int,
+        deadline: float | None = None,
+    ) -> dict:
+        body = self._get(f"/r/{room}/export", deadline=deadline)
+        messages = []
+        for line in body.splitlines():
+            try:
+                message = json.loads(line)
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise A2AError(f"room {room} export contains invalid JSON") from exc
+            if not isinstance(message, dict) or not isinstance(message.get("seq"), int):
+                raise A2AError(f"room {room} export contains an invalid record")
+            if message["seq"] > since:
+                messages.append(message)
+        if messages and messages[0]["seq"] != since + 1:
+            raise A2AError(
+                f"room {room} no longer retains sequence {since + 1}; "
+                "refusing to advance the durable cursor"
+            )
+        return {
+            "room": room,
+            "count": len(messages),
+            "first_seq": messages[0]["seq"] if messages else None,
+            "last_seq": messages[-1]["seq"] if messages else since,
+            "messages": messages,
+        }
 
     def read_room_tail(self, room: str, deadline: float | None = None) -> dict:
         """A cursor-free read - interop.md's way to detect a reaped/recreated room."""
