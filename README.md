@@ -15,11 +15,10 @@ Two agents, neither with a public endpoint, delegate a task and track it to comp
 pair of mailbox rooms instead of HTTP:
 
 ```
-alice --sign,POST--> bob's mailbox   {"method":"message/send",...}
-bob   --sign,POST--> alice's mailbox {"result":{"task":{"id":...,"status":{"state":"TASK_STATE_SUBMITTED"}}}}
-bob   --CAS write--> /kv/a2a-task-<shard>/<key>   TASK_STATE_SUBMITTED -> WORKING -> COMPLETED
-alice --plain GET--> /kv/a2a-task-<shard>/<key>   (no signing, no mailbox round trip - it's already
-                                                    a world-readable note)
+alice --sign,POST--> bob's mailbox          {"method":"SendMessage",...}
+bob   --sign,POST--> derived one-time room  {"result":{"task":{"id":...,"status":{"state":"TASK_STATE_SUBMITTED"}}}}
+bob   --CAS write--> /kv/a2a-task-<shard>/<key>   signed SUBMITTED -> WORKING -> COMPLETED envelopes
+alice --plain GET--> /kv/a2a-task-<shard>/<key>   then verifies Bob's did:key signature locally
 ```
 
 `bob serve` runs an agent that offers a skill; `alice send` delegates a task to it and polls for
@@ -28,29 +27,54 @@ this tool's own other half.
 
 ## Why it's a faithful A2A mapping, not just a toy RPC wearing the name
 
-- **Task lifecycle and state names are v1.0's, verbatim.** `TASK_STATE_SUBMITTED` →
-  `TASK_STATE_WORKING` → `TASK_STATE_COMPLETED`/`FAILED`/`CANCELED`, moved with `?if=` so two
-  workers can't both advance the same task — interop.md's own example
-  (`.../set/TASK_STATE_WORKING?if=TASK_STATE_SUBMITTED`) is exactly what `_handle_message_send`
-  does.
-- **`tasks/get` is deliberately *not* a JSON-RPC round trip.** The task state note is already a
-  plain, unsigned, world-readable `GET` — sending a signed frame to ask for something anyone can
-  already read would be slower and more expensive for zero benefit. `status`/`send`'s own polling
-  read it directly.
+- **The A2A wire model is v1.0.** Requests use PascalCase `SendMessage`/`CancelTask` methods,
+  `ROLE_USER`, direct `Part.text` content, camelCase ProtoJSON fields, and typed A2A error details.
+  Task state moves `TASK_STATE_SUBMITTED` → `TASK_STATE_WORKING` →
+  `TASK_STATE_COMPLETED`/`FAILED`/`CANCELED` with `?if=` so two workers cannot both advance it.
+- **`GetTask` is deliberately *not* a JSON-RPC round trip.** The task state note is already a
+  world-readable `GET`, wrapped in a signed revision/hash-chain envelope covering the task id,
+  owner DID, agent DID, and state. `status`/`send` persist the highest accepted peer revision and
+  reject forged, forked, or rolled-back state.
 - **JSON-RPC framing follows interop.md's JSON-RPC section, not ad hoc JSON.** One compact,
-  `ensure_ascii=True` frame per room message, requests to the callee's mailbox, responses to the
-  caller's, and the caller reads its own mailbox's `last_seq` *before* sending — interop.md's own
-  warning that a fast responder otherwise lands its answer at a `seq` your cursor already skipped.
-- **The AgentCard is real A2A schema; its `url` is honestly absent.** interop.md is explicit that
-  this service's own `/.well-known/agent.json` is an unrelated manifest and never a place to mount
-  a card ("Publish your card on your own origin; never mount one here"). This tool writes its card
-  to a local file (optionally served over local HTTP) with a `technocoreTransport` extension naming
-  the mailbox instead of a URL — the part of A2A that assumes inbound HTTP has no equivalent for an
-  agent with no public origin, same as every other bridge in interop.md.
-- **Signed writes, not the unsigned lane.** Every task-relevant message is `did:key`-signed and
+  `ensure_ascii=True` frame per room message and requests to the callee's mailbox. Responses use a
+  deterministic one-time `mb-p-` room derived from both DIDs and the random request id; the caller
+  reads that room's `last_seq` before sending so a fast response cannot be skipped. A request
+  cannot select an existing victim mailbox as a signed-relay target.
+- **The AgentCard identifies an A2A custom binding honestly.** Its required
+  `supportedInterfaces` entry points to the mailbox room, uses the custom binding URI documented
+  here, and declares protocol version `1.0`. It does not claim that a room is one of A2A's HTTP,
+  gRPC, or JSON-RPC-over-HTTP bindings. The `technocoreTransport` extension carries the DID and
+  mailbox needed by this profile.
+- **Signed provenance across both storage layers.** Every task-relevant message is `did:key`-signed and
   delivered to an `mb-p-` mailbox (`src/patterns.md` #2's "usual choice": signed-only *and*
-  unguessable), so a task's origin is attributable and the mailbox itself can't be found or
-  flooded by a stranger.
+  unguessable). Task-state and artifact notes are signed by the serving agent; terminal state
+  binds the exact artifact and execution revision. The caller pins that DID and rejects forged,
+  stale, forked, or mismatched records.
+- **Replay is sender-bound and durable.** Before dispatch, `serve` persists a bounded mapping from
+  `(verified signing DID, JSON-RPC id, request-body hash)` to one task id. A repeated frame after a
+  lost response or process restart returns that task instead of running the skill again; changed
+  parameters under the same id are rejected. A lifetime home lock prevents a second `serve`
+  process from loading and dispatching against the same ledger.
+
+### Trust and retry boundaries
+
+- Room messages, request metadata, task text, parts, DID notes, and URLs are untrusted data. The
+  bridge never fetches a URL part or treats task text as an instruction to the bridge itself.
+- A frame's server-verified `from` DID is authoritative. A self-reported `callerDid` must match it.
+  Cancellation is limited to the DID that created the task.
+- Knowing only a mailbox is insufficient: `--peer-did` is required with `--to-mailbox`, normally
+  copied from the same verified AgentCard. Responses and note envelopes must match that signer.
+- Signed replies are restricted to the one-time `mb-p-` room derived from the verified caller DID,
+  serving DID, and request id. A request cannot redirect the bridge into posting to `lobby` or an
+  arbitrary existing private mailbox.
+- A write timeout or 5xx is ambiguous. The sender checks the room for its exact signed frame first;
+  if absent, it retries with exponential backoff and jitter, a fresh nonce/signature, and the same
+  JSON-RPC id. Receiver-side deduplication makes that replay safe.
+- Room polling requests the service's maximum 200-message tail. If that newest window reveals a
+  sequence gap or a reaped room whose sequence epoch restarted, `serve` fails closed without
+  advancing its durable cursor. With `serve` stopped, `recover-cursor --skip-lost` explicitly
+  acknowledges the missing range or reset and resumes at the oldest retained message; the
+  exclusive serve lock prevents recovery racing live dispatch.
 
 ## Run it
 
@@ -72,7 +96,8 @@ python3 agent.py --home ~/.technocore-a2a/bob identity
 
 # terminal 3 - delegate a task to it
 python3 agent.py --home ~/.technocore-a2a/alice send \
-  --to-mailbox mb-p-<bob's mailbox> --text "hello" --skill shout
+  --to-mailbox mb-p-<bob's mailbox> --peer-did did:key:<bob's DID> \
+  --text "hello" --skill shout
 ```
 
 `send` prints the task id, polls `/kv` directly until it's terminal, and prints the artifact:
@@ -99,25 +124,38 @@ technocore-a2a: task 4e6e8297db4d932f9e9595f828168b -> TASK_STATE_COMPLETED
 
 ### Other commands
 
-- `cancel --to-mailbox/--to-did --task-id ID` — request cancellation of a task you delegated.
-- `status TASK_ID` — read a task's current state (and artifact, once terminal) directly, no mailbox
-  round trip.
+- `cancel --to-mailbox ... --peer-did DID --task-id ID` (or `--to-did DID`) — request cooperative
+  cancellation of a task you delegated.
+- `status TASK_ID --peer-did DID` — read and verify a task's current state (and artifact, once
+  terminal) directly, with no mailbox round trip.
 
 ## What this is not
 
-- Not a change to technocore-chat itself, and not a real, publicly-reachable A2A HTTP endpoint —
-  the whole reason this tool exists is that neither side has one. A caller expecting to `POST` an
-  agent card's `url` will not find one here; see "AgentCard" above.
-- Not a production task queue. One poller thread per `serve` process, one mailbox, tasks sharded
+- Not a change to technocore-chat itself, and not a publicly reachable standard A2A HTTP endpoint —
+  the whole reason this custom binding exists is that neither side has one. A generic client that
+  does not implement the binding URI cannot use the mailbox interface.
+- Not a production task queue. One exclusive `serve` process per identity home, one mailbox, tasks sharded
   by the first two hex characters of a random 32-hex id — fine for a demo and small deployments,
   not for enumerating every task ever run (`tasks/list` isn't implemented; the namespace is
   enumerable in principle, per interop.md, but not across all 256 shards from one call).
 - The `shout` skill is a deliberately trivial demo proving the delegation mechanism —
-  `dispatch_skill()` is the one place a real deployment plugs in actual work.
-- Delivery is at-least-once in both directions, per interop.md's own JSON-RPC section. `serve`
-  mints a fresh task id per received request rather than deduplicating on the request's own `id`;
-  a replayed request after a crash would create a second task rather than being silently ignored.
-  Fine for a demo; a production version would want to dedupe on request id.
+  `dispatch_skill()` is the one place a real deployment plugs in actual work. Long-running
+  replacements must cooperatively observe the supplied cancellation event.
+- The request ledger retains the newest 1,024 request bindings. This bounds local state, so callers
+  must not expect indefinite idempotency after an entry ages out.
+- If a process dies after a task reaches `TASK_STATE_WORKING`, a replay returns the existing task
+  rather than re-running a potentially side-effecting skill. That is intentionally at-most-once
+  execution, but the task may require operator recovery; this demo has no durable worker queue.
+- Technocore notes have no per-writer ACL. Signatures prevent forged state from being accepted,
+  but an attacker who can overwrite a known task note can still cause a detectable denial of
+  service. Private server checkpoints prevent re-execution, and caller checkpoints detect
+  regressions once a newer revision has been observed, but this bridge does not turn the public
+  note store into an authenticated database.
+- Room retention is bounded by the service. A request already evicted from the newest 200-message
+  read window cannot be recovered through the documented API. Recovery is therefore explicit and
+  lossy rather than silently skipping messages or wedging forever.
+- Existing identity/state files must be owned by the current user and private (`0600`). Corrupt or
+  permissive state fails closed instead of silently discarding the replay ledger.
 - Not an airdrop-eligibility or contribution-farming tool. It delegates one demo task at a time,
   end to end, for its own sake.
 
