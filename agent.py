@@ -493,38 +493,12 @@ class Agent:
         gap = messages and messages[0].get("seq", since + 1) > since + 1
         omitted = not messages and view.get("last_seq", since) > since
         if gap or omitted:
-            return self.read_room_export(room, since, deadline=deadline)
-        return view
-
-    def read_room_export(
-        self,
-        room: str,
-        since: int,
-        deadline: float | None = None,
-    ) -> dict:
-        body = self._get(f"/r/{room}/export", deadline=deadline)
-        messages = []
-        for line in body.splitlines():
-            try:
-                message = json.loads(line)
-            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
-                raise A2AError(f"room {room} export contains invalid JSON") from exc
-            if not isinstance(message, dict) or not isinstance(message.get("seq"), int):
-                raise A2AError(f"room {room} export contains an invalid record")
-            if message["seq"] > since:
-                messages.append(message)
-        if messages and messages[0]["seq"] != since + 1:
             raise A2AError(
-                f"room {room} no longer retains sequence {since + 1}; "
-                "refusing to advance the durable cursor"
+                f"room {room} has an unread sequence gap after {since}; "
+                "stop serve and run recover-cursor --skip-lost to acknowledge "
+                "messages already lost from the retained window"
             )
-        return {
-            "room": room,
-            "count": len(messages),
-            "first_seq": messages[0]["seq"] if messages else None,
-            "last_seq": messages[-1]["seq"] if messages else since,
-            "messages": messages,
-        }
+        return view
 
     def read_room_tail(self, room: str, deadline: float | None = None) -> dict:
         """A cursor-free read - interop.md's way to detect a reaped/recreated room."""
@@ -2130,6 +2104,33 @@ def cmd_publish(agent: Agent, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_recover_cursor(agent: Agent, args: argparse.Namespace) -> int:
+    lock_fd = acquire_serve_lock(agent.home)
+    try:
+        since = agent.state.get("cursor", 0)
+        view = agent.read_room_tail(agent.mailbox)
+        messages = view.get("messages", [])
+        if not messages:
+            raise A2AError("the mailbox has no retained messages to recover")
+        first_seq = messages[0].get("seq")
+        if not isinstance(first_seq, int):
+            raise A2AError("the mailbox tail has an invalid first sequence")
+        target = first_seq - 1
+        if target <= since:
+            print(f"{APP_NAME}: cursor {since} already reaches the retained window")
+            return 0
+        agent.state["cursor"] = target
+        agent.save_server_state()
+        print(
+            f"{APP_NAME}: acknowledged lost mailbox sequences "
+            f"{since + 1}..{target}; resume serve from {first_seq}"
+        )
+        return 0
+    finally:
+        fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+
+
 # --------------------------------------------------------------------------------------- CLI
 
 
@@ -2149,6 +2150,18 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("publish", help="publish the DID note (src/patterns.md #3) - an outward, world-readable write")
     p.set_defaults(func=cmd_publish)
+
+    p = sub.add_parser(
+        "recover-cursor",
+        help="acknowledge a reported mailbox retention gap while serve is stopped",
+    )
+    p.add_argument(
+        "--skip-lost",
+        action="store_true",
+        required=True,
+        help="confirm that missing mailbox sequences may be skipped",
+    )
+    p.set_defaults(func=cmd_recover_cursor)
 
     p = sub.add_parser("serve", help="run as an agent offering skills; long-polls its own mailbox")
     p.add_argument("--name", default="technocore-a2a demo agent")

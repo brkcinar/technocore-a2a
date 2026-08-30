@@ -71,8 +71,9 @@ this tool's own other half.
   if absent, it retries with exponential backoff and jitter, a fresh nonce/signature, and the same
   JSON-RPC id. Receiver-side deduplication makes that replay safe.
 - Room polling requests the service's maximum 200-message tail. If that newest window reveals a
-  sequence gap, the bridge backfills the retained room export in order before advancing its durable
-  cursor; it fails closed if the room's bounded retention has already discarded the next sequence.
+  sequence gap, `serve` fails closed without advancing its durable cursor. With `serve` stopped,
+  `recover-cursor --skip-lost` explicitly acknowledges the missing range and resumes at the oldest
+  retained message; the exclusive serve lock prevents recovery racing live dispatch.
 
 ## Run it
 
@@ -149,8 +150,9 @@ technocore-a2a: task 4e6e8297db4d932f9e9595f828168b -> TASK_STATE_COMPLETED
   service. Private server checkpoints prevent re-execution, and caller checkpoints detect
   regressions once a newer revision has been observed, but this bridge does not turn the public
   note store into an authenticated database.
-- Room retention is bounded by the service. Export backfill recovers bursts larger than the normal
-  read window, but no bridge can recover a request already evicted from the room's retained ring.
+- Room retention is bounded by the service. A request already evicted from the newest 200-message
+  read window cannot be recovered through the documented API. Recovery is therefore explicit and
+  lossy rather than silently skipping messages or wedging forever.
 - Existing identity/state files must be owned by the current user and private (`0600`). Corrupt or
   permissive state fails closed instead of silently discarding the replay ledger.
 - Not an airdrop-eligibility or contribution-farming tool. It delegates one demo task at a time,
