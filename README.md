@@ -71,9 +71,10 @@ this tool's own other half.
   if absent, it retries with exponential backoff and jitter, a fresh nonce/signature, and the same
   JSON-RPC id. Receiver-side deduplication makes that replay safe.
 - Room polling requests the service's maximum 200-message tail. If that newest window reveals a
-  sequence gap, `serve` fails closed without advancing its durable cursor. With `serve` stopped,
-  `recover-cursor --skip-lost` explicitly acknowledges the missing range and resumes at the oldest
-  retained message; the exclusive serve lock prevents recovery racing live dispatch.
+  sequence gap or a reaped room whose sequence epoch restarted, `serve` fails closed without
+  advancing its durable cursor. With `serve` stopped, `recover-cursor --skip-lost` explicitly
+  acknowledges the missing range or reset and resumes at the oldest retained message; the
+  exclusive serve lock prevents recovery racing live dispatch.
 
 ## Run it
 

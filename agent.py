@@ -490,13 +490,16 @@ class Agent:
         )
         view = json.loads(body.decode("utf-8"))
         messages = view.get("messages", [])
+        last_seq = view.get("last_seq", since)
+        reset = isinstance(last_seq, int) and last_seq < since
         gap = messages and messages[0].get("seq", since + 1) > since + 1
-        omitted = not messages and view.get("last_seq", since) > since
-        if gap or omitted:
+        omitted = not messages and isinstance(last_seq, int) and last_seq > since
+        if reset or gap or omitted:
+            reason = "room epoch reset" if reset else "unread sequence gap"
             raise A2AError(
-                f"room {room} has an unread sequence gap after {since}; "
+                f"room {room} has a {reason} after cursor {since}; "
                 "stop serve and run recover-cursor --skip-lost to acknowledge "
-                "messages already lost from the retained window"
+                "the cursor change"
             )
         return view
 
@@ -2110,21 +2113,27 @@ def cmd_recover_cursor(agent: Agent, args: argparse.Namespace) -> int:
         since = agent.state.get("cursor", 0)
         view = agent.read_room_tail(agent.mailbox)
         messages = view.get("messages", [])
-        if not messages:
-            raise A2AError("the mailbox has no retained messages to recover")
-        first_seq = messages[0].get("seq")
-        if not isinstance(first_seq, int):
-            raise A2AError("the mailbox tail has an invalid first sequence")
-        target = first_seq - 1
-        if target <= since:
+        if messages:
+            first_seq = messages[0].get("seq")
+            if not isinstance(first_seq, int):
+                raise A2AError("the mailbox tail has an invalid first sequence")
+            target = first_seq - 1
+        else:
+            last_seq = view.get("last_seq")
+            if not isinstance(last_seq, int) or last_seq >= since:
+                raise A2AError("the mailbox has no cursor gap to recover")
+            target = last_seq
+            first_seq = target + 1
+        if target == since:
             print(f"{APP_NAME}: cursor {since} already reaches the retained window")
             return 0
         agent.state["cursor"] = target
         agent.save_server_state()
-        print(
-            f"{APP_NAME}: acknowledged lost mailbox sequences "
-            f"{since + 1}..{target}; resume serve from {first_seq}"
-        )
+        if target > since:
+            detail = f"acknowledged lost mailbox sequences {since + 1}..{target}"
+        else:
+            detail = f"acknowledged room epoch reset from cursor {since} to {target}"
+        print(f"{APP_NAME}: {detail}; resume serve from {first_seq}")
         return 0
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)

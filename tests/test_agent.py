@@ -583,6 +583,29 @@ class CallerTests(unittest.TestCase):
 
         self.assertEqual(recovered["cursor"], 2)
 
+    def test_room_reset_requires_explicit_backward_recovery(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            home = Path(temp_dir)
+            agent = bridge.Agent(home, "https://example.test")
+            agent.state["cursor"] = 100
+            agent.save_server_state()
+            recreated = {
+                "messages": [{"seq": 1}, {"seq": 2}, {"seq": 3}],
+                "last_seq": 3,
+            }
+            agent._get = lambda *args, **kwargs: json.dumps(recreated).encode()
+            with self.assertRaisesRegex(bridge.A2AError, "room epoch reset"):
+                agent.read_room(agent.mailbox, 100)
+            agent.read_room_tail = lambda *args, **kwargs: recreated
+
+            bridge.cmd_recover_cursor(
+                agent,
+                argparse.Namespace(skip_lost=True),
+            )
+            recovered = bridge.load_state(home)
+
+        self.assertEqual(recovered["cursor"], 0)
+
     def test_concurrent_first_run_uses_one_persisted_identity(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             home = Path(temp_dir)
