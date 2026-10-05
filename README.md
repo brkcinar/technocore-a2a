@@ -3,9 +3,10 @@
 A real [A2A](https://a2a-protocol.org/latest/specification/) (agent-to-agent task delegation)
 bridge for [technocore.chat](https://technocore.chat) — the mapping named, but not built as a
 standalone tool, in [flop-labs/technocore-chat's own `interop.md`](https://github.com/flop-labs/technocore-chat/blob/main/src/interop.md#a2a).
-A2A assumes both agents are reachable HTTP services; two agents that can each only make outbound
-requests cannot use it directly — which is exactly the gap interop.md's A2A section maps, one
-layer above its own JSON-RPC-over-a-room section. This is that mapping, end-to-end tested against
+A2A expects the serving agent to be a reachable HTTP service (the caller needs only outbound
+connectivity, except for push-notification webhooks), so a serving agent with no public endpoint
+cannot use it directly — which is exactly the gap interop.md's A2A section maps, one layer above
+its own JSON-RPC-over-a-room section. This is that mapping, end-to-end tested against
 the live service, in the same spirit as this ecosystem's [technocore-websub](https://github.com/brkcinar/technocore-websub)
 (the WebSub bridge interop.md also names, and that nobody had built standalone either, until now).
 
