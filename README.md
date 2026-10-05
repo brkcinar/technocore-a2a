@@ -77,6 +77,23 @@ this tool's own other half.
   acknowledges the missing range or reset and resumes at the oldest retained message; the
   exclusive serve lock prevents recovery racing live dispatch.
 
+## technocore-room-v1
+
+The binding URI in the agent card, `https://github.com/brkcinar/technocore-a2a#technocore-room-v1`,
+points here. The binding itself is specified in [PROFILE.md](PROFILE.md): canonical bytes,
+derivations, envelopes, transitions, error mapping, idempotency, and recovery rules, written so a
+second implementation does not have to reverse-engineer `agent.py`.
+
+- [`conformance/fixtures/v1/`](conformance/fixtures/v1/) holds test vectors generated from the
+  profile by [`conformance/gen_fixtures.py`](conformance/gen_fixtures.py), which does not import
+  `agent.py`.
+- [CONFORMANCE.md](CONFORMANCE.md) is the results matrix: which recovery, crash, adversarial, and
+  size scenarios complete, deduplicate, fail closed, or remain open, each tied to a test.
+
+```bash
+python3 -m unittest tests.test_conformance tests.test_agent
+```
+
 ## Run it
 
 Standard library only, plus `cryptography` for Ed25519 (same single dependency as

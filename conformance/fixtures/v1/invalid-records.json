@@ -1,0 +1,123 @@
+{
+  "profile": "technocore-room-v1",
+  "note": "Every case MUST be rejected by record verification (PROFILE.md section 10) for the expected kind, task, agent, and owner.",
+  "cases": [
+    {
+      "name": "bad signature",
+      "why": "signature does not verify",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"AcxuLjPNzM-vYRSLC07z8egl78l71cwpREOCEP1L-NMLIGkiZCG6OcyNSawc-r1y_CWp5f3M5McOe9g1hurVBg\"}"
+    },
+    {
+      "name": "unsigned",
+      "why": "no signature member, e.g. an attacker-written note",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null}"
+    },
+    {
+      "name": "value changed after signing",
+      "why": "state edited, signature kept",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_COMPLETED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"WcxuLjPNzM-vYRSLC07z8egl78l71cwpREOCEP1L-NMLIGkiZCG6OcyNSawc-r1y_CWp5f3M5McOe9g1hurVBg\"}"
+    },
+    {
+      "name": "wrong owner",
+      "why": "validly signed by the agent, but for another caller's task",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6MkjbFBkqXZZiaUdGHkSSJhoFyShCbwk6Ew4aNLjWv1RmYX\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"VdNxdm7hmeaNS0jLnrdIi7IaAN03dY75WDt3byXlN_-29DdqoF8dee4EdNFwEV1xUPQh8sc0_2KDmzIkP0awDA\"}"
+    },
+    {
+      "name": "wrong task",
+      "why": "validly signed record for another task copied into this task's note",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"ab8a99164b2afd8c37b230a68519e4dc\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"qbT-kT9kt5ldKUHtFICVz4fYd56sg23ftBZb2JKXu824pPcKmKPCm9vLbCqttjb1cwxnynFniSddvuoSI_AfAw\"}"
+    },
+    {
+      "name": "wrong agent",
+      "why": "signed by a different key that names itself as agentDid",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjbFBkqXZZiaUdGHkSSJhoFyShCbwk6Ew4aNLjWv1RmYX\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"WDDxZMiEbRfy1YhmF6Uem0hDZDtYe6IT5jNZJtTCuXBivfoevqfEbFZopLdOJU3Np-ctCMWwyRCRTBJYY1V5BQ\"}"
+    },
+    {
+      "name": "agent impersonation",
+      "why": "names the expected agent but is signed by another key",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"LFSV3XXAxoKW_7XYwxxeKthMP169-nR0M_5LDWwkgIEOg_dg2xaQdnxZToXTD8ZGpX87vhRoMBYmNilio0uYBw\"}"
+    },
+    {
+      "name": "kind confusion",
+      "why": "an artifact record presented as task state",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-artifact\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"artifact\":{\"skill\":\"shout\",\"input\":\"hello\",\"output\":\"HELLO!!!\",\"ok\":true},\"workingStateHash\":\"166d1be4a20327f6b41de25a1957b78d445a5c3d8b69cb43c5fbcf715910b011\",\"signature\":\"qU_S_tKdoHbdbRUpR9e167yWxJyotny3EK4rOGgNwJKGvCEMj9nJMiocOE7YWILqllEsOqsBx2BGqqMpREg2Dg\"}"
+    },
+    {
+      "name": "non-canonical whitespace",
+      "why": "raw form rule: valid signature, non-canonical bytes",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\": \"task-state\", \"taskId\": \"570c76e3cf3e18156c68301265e0231c\", \"ownerDid\": \"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\", \"agentDid\": \"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\", \"state\": \"TASK_STATE_SUBMITTED\", \"revision\": 0, \"previousHash\": \"\", \"previousRecord\": null, \"signature\": \"WcxuLjPNzM-vYRSLC07z8egl78l71cwpREOCEP1L-NMLIGkiZCG6OcyNSawc-r1y_CWp5f3M5McOe9g1hurVBg\"}"
+    },
+    {
+      "name": "duplicate member",
+      "why": "raw form rule: parsers disagree on which value wins",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_COMPLETED\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"WcxuLjPNzM-vYRSLC07z8egl78l71cwpREOCEP1L-NMLIGkiZCG6OcyNSawc-r1y_CWp5f3M5McOe9g1hurVBg\"}"
+    },
+    {
+      "name": "invalid genesis",
+      "why": "revision 0 with a predecessor hash",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":0,\"previousHash\":\"2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881\",\"previousRecord\":null,\"signature\":\"8NRy_XwWNmMNI1fDCK1E-Js2G6Pbzzw0cH4cciYk9-mMuBePB6RicZXIjKUUX52GH1bFN1QuuZJF0wm58MvBCA\"}"
+    },
+    {
+      "name": "negative revision",
+      "why": "revision must be a non-negative integer",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_SUBMITTED\",\"revision\":-1,\"previousHash\":\"\",\"previousRecord\":null,\"signature\":\"HMMxs-9xMW2tERD7ZsJAHiyZUt7xQUPcaf-FFooQWvKobbWumQyU9SRLxMqnX5ORPBHwCLpbE-GY8qu1lCtDCw\"}"
+    },
+    {
+      "name": "missing predecessor",
+      "why": "revision > 0 without previousRecord",
+      "kind": "task-state",
+      "taskId": "570c76e3cf3e18156c68301265e0231c",
+      "expectedAgentDid": "did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba",
+      "expectedOwnerDid": "did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C",
+      "raw": "{\"kind\":\"task-state\",\"taskId\":\"570c76e3cf3e18156c68301265e0231c\",\"ownerDid\":\"did:key:z6Mkj7PvSKKmQjgi9bwycBN1g42Dmax9n9RvL1cTUQzo679C\",\"agentDid\":\"did:key:z6MkjxNMYJKRJvyehJjj2uUvN3scaHwB5yzXBVt899wj1iba\",\"state\":\"TASK_STATE_WORKING\",\"revision\":1,\"previousHash\":\"c57c1cca75780c16ee79e9d54e525f92ee0bfc067ef24a142fee5936bbd1ad9f\",\"previousRecord\":null,\"signature\":\"W6sNltwOz773gtJ2E0O150xNrNJhdIgfEhs2Thv9jws3LbX5fiyAOwBwFVBICO0J2MA5M9r8rvrXWs3GqRACBQ\"}"
+    }
+  ]
+}

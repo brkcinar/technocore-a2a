@@ -74,7 +74,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 
 APP_NAME = "technocore-a2a"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.3.0"
 A2A_PROTOCOL_VERSION = "1.0"
 A2A_BINDING_URI = "https://github.com/brkcinar/technocore-a2a#technocore-room-v1"
 
@@ -110,6 +110,10 @@ UA = f"{APP_NAME}/{APP_VERSION}"
 
 class A2AError(Exception):
     """Something the caller did wrong, or the peer refused - never a bug to retry past."""
+
+
+class CapacityError(A2AError):
+    """A frame or note would exceed the service's size cap - retrying the same bytes can't help."""
 
 
 def _backoff(attempt: int, cap: float = 5.0) -> float:
@@ -515,7 +519,7 @@ class Agent:
 
     def say_signed(self, room: str, text: str, deadline: float | None = None) -> int:
         if len(text) > MESSAGE_MAX_CHARS:
-            raise A2AError(f"frame is {len(text)} chars, over the {MESSAGE_MAX_CHARS}-char message cap")
+            raise CapacityError(f"frame is {len(text)} chars, over the {MESSAGE_MAX_CHARS}-char message cap")
         retries = 5
         attempt = 0
         while True:
@@ -594,7 +598,7 @@ class Agent:
         deadline: float | None = None,
     ) -> bool:
         if len(value) > NOTE_MAX_CHARS:
-            raise A2AError(f"note is {len(value)} chars, over the {NOTE_MAX_CHARS}-char note cap")
+            raise CapacityError(f"note is {len(value)} chars, over the {NOTE_MAX_CHARS}-char note cap")
         params = {}
         if if_expected is not None:
             params["if"] = if_expected
@@ -776,6 +780,11 @@ def _verify_record(
         raise A2AError(f"{kind} record for {task_id} is not valid JSON") from exc
     if not isinstance(record, dict):
         raise A2AError(f"{kind} record for {task_id} is not an object")
+    # PROFILE.md section 3, raw form rule: the stored bytes must already be canonical. Hashes
+    # chain over raw bytes while signatures cover the re-serialization, so a whitespace
+    # variant or a duplicate member (which parsers resolve differently) must not verify.
+    if _dumps(record) != raw:
+        raise A2AError(f"{kind} record for {task_id} is not in canonical form")
     signature = record.pop("signature", None)
     if not isinstance(signature, str):
         raise A2AError(f"{kind} record for {task_id} has no signature")
@@ -961,6 +970,10 @@ def task_artifact_set(
     }
     namespace, key = task_artifact_ns(task_id)
     raw = _signed_record(agent, payload)
+    if len(raw) > NOTE_MAX_CHARS:
+        raise CapacityError(
+            f"artifact for {task_id} is {len(raw)} chars, over the {NOTE_MAX_CHARS}-char note cap"
+        )
     agent.kv_set(namespace, key, raw)
     return {**payload, "_raw": raw}
 
@@ -1318,13 +1331,32 @@ def _execute_task(
             "output": result,
             "ok": ok,
         }
-        artifact_record = task_artifact_set(
-            agent,
-            task_id,
-            owner_did,
-            artifact,
-            current,
-        )
+        try:
+            artifact_record = task_artifact_set(
+                agent,
+                task_id,
+                owner_did,
+                artifact,
+                current,
+            )
+        except CapacityError:
+            # PROFILE.md section 9.3: an output that cannot be stored must still end the task,
+            # not leave it WORKING forever. Report it as a typed failure instead.
+            ok = False
+            artifact = {
+                "skill": skill,
+                "ok": False,
+                "error": "skill output exceeds the note size cap",
+                "reason": "ARTIFACT_TOO_LARGE",
+                "limit": NOTE_MAX_CHARS,
+            }
+            artifact_record = task_artifact_set(
+                agent,
+                task_id,
+                owner_did,
+                artifact,
+                current,
+            )
         if cancel_event.is_set():
             return
         terminal = TASK_STATE_COMPLETED if ok else TASK_STATE_FAILED
